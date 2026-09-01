@@ -1,0 +1,2 @@
+import type {MetadataRoute} from 'next';
+export default function manifest():MetadataRoute.Manifest{return{name:'WyBlog',short_name:'WyBlog',description:'Blogger publishing, SEO and site management platform',start_url:'/app',display:'standalone',background_color:'#f6f8fb',theme_color:'#3657d6',icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icon-512.png',sizes:'512x512',type:'image/png'}]};}

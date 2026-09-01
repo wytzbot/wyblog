@@ -1,0 +1,2 @@
+import {NextResponse} from 'next/server';import {getSession} from '@/lib/session';
+export async function GET(){if(!(await getSession()))return NextResponse.json({error:'Connect your Google account first.'},{status:401});return NextResponse.json({supported:false,reason:'Blogger API v3 does not expose template XML management. WyBlog will not pretend this feature works.',manualUrl:'https://www.blogger.com/'})}

@@ -1,0 +1,1 @@
+import AppShell from '@/components/AppShell';import {getEntitlement} from '@/lib/subscription';export default async function Layout({children}:{children:React.ReactNode}){const e=await getEntitlement();return <AppShell plan={e.plan}>{children}</AppShell>}
