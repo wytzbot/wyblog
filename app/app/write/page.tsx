@@ -1,1 +1,0 @@
-'use client';import {useSearchParams} from 'next/navigation';import Editor from '@/components/Editor';export default function Write(){const q=useSearchParams();return <Editor initial={{blogId:q.get('blogId')||undefined}} blogId={q.get('blogId')||undefined}/>}

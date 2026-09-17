@@ -1,1 +1,0 @@
-import './globals.css';import type {Metadata} from 'next';export const metadata:Metadata={title:'WyBlog — Better Blogger publishing',description:'A modern publishing, SEO and site-management dashboard for Blogger.'};export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en"><body>{children}</body></html>}
