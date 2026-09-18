@@ -11,7 +11,7 @@ WyBlog is a mobile-first control panel and plugin ecosystem for Blogger.
 - SEO score + broken-link metrics
 - Plugin catalog foundation
 - Free/Pro usage model
-- Pro pricing: **$3.99/month / ₦4,500/month**
+- Pro pricing: **$1/month / ₦1,000/month**
 - Flutterwave v4 integration boundary
 - Firebase/FCM configuration boundary
 - Server-only OAuth/payment/AI secrets
@@ -47,6 +47,7 @@ npm run build
 - `/api/billing/create`
 - `/api/billing/verify`
 - `/api/billing/webhook`
+- `/api/billing/status`
 
 ## Diagnosis architecture
 
@@ -60,7 +61,7 @@ npm run build
 8. Only consume a diagnosis credit when a new AI generation is required.
 
 Free: 5 new AI generations/month.  
-Pro: 10 new AI generations/month.
+Pro: 10 new AI generations/month plus all Pro plugins.
 
 Blogger remains the publishing backend. WyBlog should not unnecessarily duplicate a user's entire blog database.
 
@@ -92,7 +93,7 @@ The frontend cannot safely invent or emulate:
 - Flutterwave v4 verification/webhooks
 - AI provider calls
 
-Those should be implemented under `/api` with server-only secrets.
+Those should be implemented under `/api` with server-only secrets. Pro checkout now has the server-side payment/verification structure; live recurring billing still requires the Flutterwave plan IDs and secrets listed in `api/README.md`.
 
 
 ## Expanded editor

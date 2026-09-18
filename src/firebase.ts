@@ -50,19 +50,22 @@ export async function enableWyBlogNotifications(): Promise<{
 }> {
   if (typeof window === "undefined") return { token: null, reason: "browser-only" };
   if (!("Notification" in window)) return { token: null, reason: "notifications-unsupported" };
+  if (!window.isSecureContext) return { token: null, reason: "https-required" };
   if (!("serviceWorker" in navigator)) return { token: null, reason: "service-worker-unsupported" };
 
   const permission = await Notification.requestPermission();
   if (permission !== "granted") return { token: null, reason: `permission-${permission}` };
 
-  const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  let registration: ServiceWorkerRegistration;
+  try { registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js"); await navigator.serviceWorker.ready; } catch { return { token: null, reason: "service-worker-registration-failed" }; }
   const messaging = await getWyBlogMessaging();
   if (!messaging) return { token: null, reason: "messaging-unsupported" };
 
-  const token = await getToken(messaging, {
+  let token: string;
+  try { token = await getToken(messaging, {
     vapidKey: WYBLOG_FIREBASE_VAPID_KEY,
     serviceWorkerRegistration: registration
-  });
+  }); } catch { return { token: null, reason: "fcm-token-failed" }; }
 
   if (!token) return { token: null, reason: "token-unavailable" };
   localStorage.setItem("wyblog_fcm_token", token);

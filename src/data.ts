@@ -9,35 +9,26 @@ export const demoBlog: Blog = {
 };
 
 export const demoDiagnosis: DiagnosisSummary = {
-  seoScore: 84,
-  brokenLinks: 7,
-  seoIssues: 12,
-  pagesChecked: 18,
-  postsChecked: 246,
-  critical: [
-    "7 links returned errors during the latest site scan.",
-    "2 affected pages need attention."
-  ],
-  seo: [
-    "8 posts need stronger search descriptions.",
-    "4 images are missing useful alt text."
-  ],
-  good: [
-    "HTTPS detected.",
-    "Most post URLs are valid.",
-    "Blog title is configured."
-  ]
+  seoScore: 84, brokenLinks: 7, seoIssues: 12, pagesChecked: 18, postsChecked: 246,
+  critical: ["7 links returned errors during the latest site scan.", "2 affected pages need attention."],
+  seo: ["8 posts need stronger search descriptions.", "4 images are missing useful alt text."],
+  good: ["HTTPS detected.", "Most post URLs are valid.", "Blog title is configured."]
 };
 
+const base = (name:string, description:string, category:string, snippet:string, instructions:string[], extra:Partial<Plugin>={}) => ({id:name.toLowerCase().replace(/[^a-z0-9]+/g,"-"), name, description, category, snippet, instructions, ...extra});
+
 export const plugins: Plugin[] = [
-  { id: "seo", name: "SEO Toolkit", description: "Site-wide SEO checks, metadata helpers and health insights.", category: "SEO", installed: true },
-  { id: "toc", name: "Table of Contents", description: "Generate clean in-post navigation for long articles.", category: "Content" },
-  { id: "related", name: "Related Posts", description: "Add contextual related-post sections to your Blogger theme.", category: "Content" },
-  { id: "reading", name: "Reading Progress", description: "Show a lightweight progress indicator on articles.", category: "UX" },
-  { id: "dark", name: "Dark Mode", description: "Give visitors a comfortable dark reading option.", category: "UX" },
-  { id: "share", name: "Social Share", description: "Add compact share actions to posts.", category: "Growth" },
-  { id: "push", name: "Push Notifications", description: "Notify subscribers when new posts are published.", category: "Growth", installed: true },
-  { id: "advanced-push", name: "Advanced Push", description: "Scheduling, segmentation and delivery insights.", category: "Growth", pro: true },
-  { id: "analytics", name: "Analytics", description: "Bring useful blog performance signals into WyBlog.", category: "Analytics", pro: true },
-  { id: "ai-seo", name: "AI SEO", description: "Generate compact SEO recommendations from deterministic findings.", category: "AI", pro: true }
+  base("SEO Toolkit", "Site-wide SEO checks, metadata helpers and health insights.", "SEO", `<!-- WyBlog SEO Toolkit: paste this inside Blogger Theme > Edit HTML, before </head> -->\n<meta name="robots" content="index,follow,max-image-preview:large">\n<meta name="viewport" content="width=device-width,initial-scale=1">`, ["Back up your Blogger theme first.", "Open Blogger → Theme → Edit HTML.", "Paste the snippet immediately before </head>.", "Save the theme and open a public post to verify the page source."]),
+  base("Table of Contents", "Generate clean in-post navigation for long articles.", "Content", `<nav class="wyblog-toc" aria-label="Table of contents"><strong>Table of contents</strong><ol id="wyblog-toc-list"></ol></nav>\n<script>(function(){const root=document.querySelector('.post-body');const list=document.getElementById('wyblog-toc-list');if(!root||!list)return;root.querySelectorAll('h2,h3').forEach((h,i)=>{h.id=h.id||'wyblog-heading-'+(i+1);const li=document.createElement('li');li.innerHTML='<a href="#'+h.id+'">'+h.textContent+'</a>';list.appendChild(li)})})();</script>`, ["Open Blogger → Theme → Edit HTML.", "Paste the snippet where the post body should display the table of contents, or adapt the selector to your theme.", "Save and test an article containing H2/H3 headings."]),
+  base("Related Posts", "Add contextual related-post sections to your Blogger theme.", "Content", `<div id="wyblog-related" aria-label="Related posts"><strong>Related posts</strong><p>Loading…</p></div>\n<script>/* Connect this block to your Blogger JSON feed or your own related-post endpoint. Do not expose private API keys here. */</script>`, ["Place the container after the post body in Blogger Theme → Edit HTML.", "Connect it to a public Blogger feed or your own server-side endpoint.", "Never paste private API keys into the theme.", "Publish a test post and confirm the related section renders."]),
+  base("Reading Progress", "Show a lightweight progress indicator on articles.", "UX", `<div id="wyblog-progress" style="position:fixed;top:0;left:0;width:0;height:3px;background:#111;z-index:99999"></div>\n<script>(function(){const bar=document.getElementById('wyblog-progress');addEventListener('scroll',()=>{const max=document.documentElement.scrollHeight-innerHeight;bar.style.width=(max>0?(scrollY/max)*100:0)+'%'},{passive:true})})();</script>`, ["Open Blogger → Theme → Edit HTML.", "Paste before </body>.", "Save and scroll through a public post to test the progress bar."]),
+  base("Dark Mode", "Give visitors a comfortable dark reading option.", "UX", `<button id="wyblog-dark" type="button" aria-label="Toggle dark mode">Dark mode</button>\n<style>body.wyblog-dark{background:#111!important;color:#eee!important}body.wyblog-dark a{color:#9ecbff!important}body.wyblog-dark .post-body{background:#111!important;color:#eee!important}</style>\n<script>document.getElementById('wyblog-dark')?.addEventListener('click',()=>document.body.classList.toggle('wyblog-dark'));</script>`, ["Open Blogger → Theme → Edit HTML.", "Paste the block where you want the toggle to appear.", "Adjust the CSS selectors for your theme's containers if needed.", "Save and test on both desktop and mobile."]),
+  base("Social Share", "Add compact share actions to posts.", "Growth", `<div class="wyblog-share"><button type="button" onclick="navigator.share?navigator.share({title:document.title,url:location.href}):navigator.clipboard.writeText(location.href)">Share</button></div>`, ["Open Blogger → Theme → Edit HTML.", "Place the block near the post title or footer.", "On browsers without Web Share, the fallback copies the URL.", "Save and test from a phone and desktop browser."]),
+  base("Push Notifications", "Notify subscribers when new posts are published.", "Growth", `<!-- Client-side registration belongs on your own HTTPS site; server delivery must use Firebase Admin. -->\n<script>console.info('WyBlog Push Notifications requires Firebase Cloud Messaging configuration and server-side delivery.');</script>`, ["Create/choose a Firebase project and enable Cloud Messaging.", "Serve the Blogger site over HTTPS and install the Firebase messaging service worker.", "Generate a Web Push VAPID key in Firebase Console → Project settings → Cloud Messaging.", "Store subscriber tokens server-side and send notifications with Firebase Admin; never put an Admin private key in Blogger theme code."]),
+  base("Advanced Push", "Scheduling, segmentation and delivery insights.", "Growth", `<!-- Advanced Push is a server-side feature; no secret credentials belong in this snippet. -->\n<script>console.info('Use your server scheduler/FCM service to segment and schedule notifications.');</script>`, ["Activate Pro in WyBlog.", "Configure Firebase Admin credentials on the server.", "Create subscriber segments in your server database.", "Schedule sends from your trusted server and record delivery/send errors."]),
+  base("Analytics", "Bring useful blog performance signals into WyBlog.", "Analytics", `<!-- Add your analytics provider's public tag here only if you have configured one. -->\n<script>console.info('Analytics integration should use a provider-approved public measurement ID.');</script>`, ["Activate Pro in WyBlog.", "Choose Google Analytics or another supported analytics provider.", "Paste only the provider's public measurement ID/tag; never paste secret credentials.", "Verify events in the provider dashboard after publishing."]),
+  base("AI SEO", "Generate compact SEO recommendations from deterministic findings.", "AI", `<!-- AI SEO runs inside WyBlog; no private AI key should be pasted into Blogger. -->\n<script>console.info('AI SEO recommendations are generated by the WyBlog server from compact findings.');</script>`, ["Activate Pro in WyBlog.", "Connect your Blogger site and run a diagnosis.", "Open the AI SEO plugin and review the generated recommendations.", "Apply changes in the Blogger editor; do not paste server API keys into theme code."]),
+  base("Core Web Vitals Monitor", "Monitor real-world performance signals when a supported analytics source is connected.", "Performance", `<!-- Connect this plugin to a supported server-side PageSpeed/analytics integration. -->\n<script>console.info('Core Web Vitals Monitor requires a server-side measurement source.');</script>`, ["Activate Pro in WyBlog.", "Configure the supported PageSpeed/analytics source on the WyBlog server.", "Run a measurement for the public blog URL.", "Review LCP, INP and CLS results and optimize the Blogger theme/content accordingly."]),
+  base("Google Search Console", "Connect Search Console data for indexing and search performance insights.", "Integration", `<!-- Search Console connection is OAuth-based and should not use pasted private credentials. -->\n<script>console.info('Connect Google Search Console from WyBlog server settings.');</script>`, ["Activate Pro in WyBlog.", "Connect the Google account that owns or has access to the Search Console property.", "Select the matching Blogger property.", "Review indexing and search performance data inside WyBlog."]),
+  base("Redirect & URL Audit", "Find changed URLs and broken destinations.", "SEO", `<!-- URL auditing runs from WyBlog's server-side crawler. No Blogger theme code is required. -->\n<script>console.info('Run Redirect & URL Audit from the WyBlog plugin panel.');</script>`, ["Activate Pro in WyBlog.", "Connect Blogger and run the audit.", "Review redirect chains and broken destinations.", "Fix URLs in Blogger and rerun the audit to confirm the result."])
 ];

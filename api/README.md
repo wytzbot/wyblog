@@ -1,89 +1,37 @@
-# Vercel API implementation plan
+# WyBlog server integration notes
 
-This directory documents the server-side routes to add.
+## Pro billing
+WyBlog Pro is **$1/month or ₦1,000/month**. All Pro plugins unlock together after the server confirms an active subscription.
 
-## OAuth
-`/api/auth/google` creates the Google OAuth URL.  
-`/api/auth/callback` exchanges the code and stores the refresh token server-side.
+Create one monthly Flutterwave Payment Plan for each currency and set:
+- `FLW_PAYMENT_PLAN_USD` — USD plan ID charging $1 monthly
+- `FLW_PAYMENT_PLAN_NGN` — NGN plan ID charging ₦1,000 monthly
+- `FLW_SECRET_KEY`
+- `FLW_WEBHOOK_SECRET_HASH`
+- `APP_URL` — the production WyBlog URL
 
-Use Blogger scopes only as needed:
-- readonly: `https://www.googleapis.com/auth/blogger.readonly`
-- editing: `https://www.googleapis.com/auth/blogger`
+The checkout is created server-side. Flutterwave redirects the user back to WyBlog, but the browser callback alone never grants Pro. The verification route checks the transaction server-side; the webhook also verifies the transaction and is idempotent before updating Firestore.
 
-## Diagnosis
-`/api/diagnosis` should:
-- identify the connected blog
-- fetch posts/pages through Blogger API
-- deduplicate outbound URLs
-- use a URL-status cache
-- calculate SEO score deterministically
-- count broken links deterministically
-- produce affected public post/page URLs
-- fingerprint normalized findings
-- return cached AI output when fingerprint is unchanged
-- enforce 5 free / 10 Pro new AI generations per calendar month
+Flutterwave documents payment plans as recurring subscriptions and recommends webhooks plus server-side verification before granting value. urlFlutterwave Payment Planshttps://developer.flutterwave.com/docs/payment-plans-1
 
-AI should receive compact findings, not the entire blog.
+## Firebase / notifications
+Set these server variables:
+- `FIREBASE_ADMIN_PROJECT_ID`
+- `FIREBASE_ADMIN_CLIENT_EMAIL`
+- `FIREBASE_ADMIN_PRIVATE_KEY`
+- `WYBLOG_PUSH_SECRET`
 
-## Billing
-`/api/billing/create` creates a Flutterwave v4 checkout using:
-- USD: $3.99/month
-- NGN: ₦4,500/month
+The browser uses the public Firebase web configuration and VAPID key. The Firebase Admin private key is server-only.
 
-`/api/billing/verify` verifies the transaction server-side.
+The service worker must remain at `/firebase-messaging-sw.js` on the HTTPS origin. WyBlog refuses notification registration when the page is not secure, when service-worker registration fails, or when FCM token creation fails. FCM requires HTTPS and a messaging service worker for web push. urlFirebase Web FCM setuphttps://firebase.google.com/docs/cloud-messaging/web/get-started
 
-`/api/billing/webhook` handles recurring billing events and keeps subscription state current.
+Server delivery routes:
+- `POST /api/push` — send to one token; requires `Authorization: Bearer $WYBLOG_PUSH_SECRET`.
+- `POST /api/push/broadcast` — send to registered tokens; same secret.
 
-Never unlock Pro solely from a browser success callback.
+A broadcast response reports `sent` and `failed`; the server never claims delivery when Firebase rejects the request.
 
-## FCM
-`/api/push` registers/removes web push tokens or subscriptions. A scheduled sync can detect new Blogger posts and trigger FCM notifications.
+## Plugin delivery model
+Plugins are delivered in-app as copyable snippets and integration instructions. No plugin ZIP is required. Each plugin detail screen tells the user exactly where the snippet belongs and warns when server-side configuration is required.
 
-## Database
-Firestore should store small metadata only:
-- users
-- Blogger connections
-- plugin installations/settings
-- subscription state
-- usage counters
-- push subscriptions
-- diagnosis fingerprints/summaries
-- cache records
-
-Do not duplicate the complete Blogger site into Firestore.
-
-
-## Blogger editor capabilities
-
-The Blogger v3 API exposes post HTML content and metadata, and supports insert/update/patch/publish/revert/delete for posts. Pages can also be inserted/updated/deleted. It exposes comments, blog metadata/locale and pageview data.
-
-The API reference does **not** list theme/template or layout/layer resources. WyBlog must not pretend to edit those through Blogger API v3. The UI should deep-link users to Blogger for theme/layout editing instead.
-
-The editor should send HTML from WyBlog to the server as Blogger `Post.content`. There is no frontend character limit in WyBlog's editor.
-
-## Editor save
-
-Recommended server endpoints:
-- `GET /api/posts/:id`
-- `POST /api/posts`
-- `PATCH /api/posts/:id`
-- `POST /api/posts/:id/publish`
-- `POST /api/posts/:id/revert`
-- `DELETE /api/posts/:id`
-
-Autosave should debounce network writes while localStorage saves immediately. Use patch/update with the minimum changed fields.
-
-## SEO integrations
-
-Recommended server-side integrations:
-- Google Search Console
-- Google Analytics
-- PageSpeed Insights
-- sitemap/robots checks
-- canonical/meta/OG/Twitter-card checks
-- structured-data/schema checks
-- image alt-text checks
-- internal-link/orphan-content checks
-- broken-link and redirect audits
-
-External API keys/secrets belong server-side.
+Never paste Firebase Admin keys, Flutterwave secret keys, Google OAuth client secrets, or AI provider keys into Blogger theme code.

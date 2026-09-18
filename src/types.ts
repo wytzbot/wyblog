@@ -26,4 +26,7 @@ export interface Plugin {
   category: string;
   pro?: boolean;
   installed?: boolean;
+  snippet: string;
+  instructions: string[];
+  requirements?: string[];
 }

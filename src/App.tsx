@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { demoBlog, demoDiagnosis, plugins } from "./data";
 import type { Plugin } from "./types";
-import { connectBlogger, getBlogPosts, getConnectionStatus, runDiagnosis, saveBackupToDrive, saveBloggerPost, startProCheckout, uploadMediaToDrive } from "./api";
+import { connectBlogger, getBlogPosts, getConnectionStatus, getBillingStatus, runDiagnosis, saveBackupToDrive, saveBloggerPost, startProCheckout, uploadMediaToDrive, verifyProPayment } from "./api";
 import { enableWyBlogNotifications } from "./firebase";
 import { clearDraftCloud, loadDraftCloud, saveDraftCloud, saveFcmToken } from "./cloud";
 
@@ -24,7 +24,9 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [blogConnected, setBlogConnected] = useState(false);
-  const [plan] = useState<"free"|"pro">("free");
+  const [plan, setPlan] = useState<"free"|"pro">("free");
+  const [billingEmail, setBillingEmail] = useState(() => localStorage.getItem("wyblog_billing_email") || "");
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [diagnosisCount, setDiagnosisCount] = useState(0);
   const [notice, setNotice] = useState("");
   const [diagnosis, setDiagnosis] = useState(demoDiagnosis);
@@ -38,11 +40,17 @@ function App() {
       window.history.replaceState({}, "", window.location.pathname);
       if (active) showNotice("Blogger connected successfully.");
     }
+    const transactionId = params.get("transaction_id");
+    if (transactionId) {
+      void verifyProPayment(transactionId).then(() => { setPlan("pro"); showNotice("Payment verified. WyBlog Pro is now active."); }).catch((error) => showNotice(error instanceof Error ? error.message : "Payment could not be verified."));
+      window.history.replaceState({}, "", window.location.pathname);
+    }
     void getConnectionStatus().then((result) => {
       if (active) setBlogConnected(Boolean(result.connected));
     }).catch(() => {
       if (active) setBlogConnected(false);
     });
+    void getBillingStatus().then((result) => { if (active) setPlan(result.plan); }).catch(() => { if (active) setPlan("free"); });
     return () => { active = false; };
   }, []);
 
@@ -113,8 +121,8 @@ function App() {
 
         {tab === "home" && <Home onEdit={() => setEditorOpen(true)} diagnosis={diagnosis} onDiagnosis={() => setTab("diagnosis")} plugins={plugins} onNotice={showNotice}/>}
         {tab === "posts" && <PostsView onEdit={() => setEditorOpen(true)} onNotice={showNotice} onLoadPosts={getBlogPosts}/>}
-        {tab === "plugins" && <PluginsView onNotice={showNotice}/>}
-        {tab === "diagnosis" && <DiagnosisView diagnosis={diagnosis} remaining={remaining} onRun={handleDiagnosis} onUpgrade={async()=>{try{await startProCheckout("NGN")}catch{showNotice("Flutterwave checkout is not configured yet.")}}} onNotice={showNotice}/>}
+        {tab === "plugins" && <PluginsView plan={plan} onNotice={showNotice} onUpgrade={()=>setCheckoutOpen(true)}/>}
+        {tab === "diagnosis" && <DiagnosisView diagnosis={diagnosis} remaining={remaining} onRun={handleDiagnosis} onUpgrade={()=>setCheckoutOpen(true)} onNotice={showNotice}/>}
       </main>
 
       <nav className="bottom-nav">
@@ -124,7 +132,8 @@ function App() {
         <NavButton active={tab==="diagnosis"} icon={<Bot/>} label="Diagnosis" onClick={()=>setTab("diagnosis")}/>
       </nav>
 
-      {menuOpen && <MenuDrawer close={()=>setMenuOpen(false)} openBlog={openBlog} openBlogger={openBlogger} setTab={setTab} onEdit={()=>setEditorOpen(true)} onNotice={showNotice} onEnableNotifications={async()=>{try{const result=await enableWyBlogNotifications(); if(result.token){await saveFcmToken(result.token); showNotice("Notifications enabled and registered with WyBlog.");} else showNotice(`Notifications not enabled: ${result.reason||"unknown reason"}.`);}catch{showNotice("Could not enable notifications on this device. Check Firebase Authentication/FCM setup.")}}} onUpgrade={async()=>{try{await startProCheckout("NGN")}catch{showNotice("Flutterwave checkout is not configured yet.")}}}/>}
+      {menuOpen && <MenuDrawer close={()=>setMenuOpen(false)} openBlog={openBlog} openBlogger={openBlogger} setTab={setTab} onEdit={()=>setEditorOpen(true)} onNotice={showNotice} onEnableNotifications={async()=>{try{const result=await enableWyBlogNotifications(); if(result.token){await saveFcmToken(result.token); showNotice("Notifications enabled and registered with WyBlog.");} else showNotice(`Notifications not enabled: ${result.reason||"unknown reason"}.`);}catch{showNotice("Could not enable notifications on this device. Check Firebase Authentication/FCM setup.")}}} onUpgrade={()=>setCheckoutOpen(true)}/>}
+      {checkoutOpen && <ProCheckout email={billingEmail} setEmail={setBillingEmail} close={()=>setCheckoutOpen(false)} onSubmit={async(currency)=>{if(!billingEmail.trim()){showNotice("Enter your billing email first.");return;} localStorage.setItem("wyblog_billing_email", billingEmail.trim()); try{await startProCheckout(currency,billingEmail.trim());}catch(error){showNotice(error instanceof Error?error.message:"Checkout could not start.");}}}/>}
       {notice && <div className="toast">{notice}</div>}
     </div>
   );
@@ -158,33 +167,35 @@ function PostsView({onEdit,onNotice,onLoadPosts}:{onEdit:()=>void;onNotice:(s:st
  return <div><section className="section-heading"><div><p className="eyebrow">CONTENT</p><h1>Your posts</h1></div><div className="editor-head-actions"><button className="secondary small" onClick={()=>void load()} disabled={loading}>{loading?"Loading…":"Refresh"}</button><button className="primary small" onClick={onEdit}>New article</button></div></section>{posts.length===0?<div className="empty-state"><strong>Connect Blogger to load your real posts.</strong><p>This screen never labels demo content as published Blogger content.</p></div>:<div className="post-list">{posts.map((post,index)=>{const item=post as {id?:string;title?:string;published?:string;url?:string};return <button className="post-row" key={item.id||index} onClick={()=>item.url?window.open(item.url,"_blank","noopener,noreferrer"):onNotice("This Blogger post has no public URL.")}><div className="post-number">{index+1}</div><div><strong>{item.title||"Untitled post"}</strong><span>{item.published?new Date(item.published).toLocaleDateString():"Blogger post"}</span></div><ChevronRight/></button>})}</div>}</div>;
 }
 
-function PluginsView({onNotice}:{onNotice:(s:string)=>void}) {
- const catalog = [
-  ...plugins,
-  {id:"schema",name:"Schema & Structured Data",description:"Validate article structure and generate supported schema recommendations.",category:"SEO"},
-  {id:"meta",name:"Meta Title & Description",description:"SEO title/description length and quality checks.",category:"SEO"},
-  {id:"canonical",name:"Canonical URL",description:"Check canonical consistency and duplicate URL signals.",category:"SEO"},
-  {id:"og",name:"Open Graph & Social Cards",description:"Check share titles, descriptions and image metadata.",category:"SEO"},
-  {id:"sitemap",name:"XML Sitemap Monitor",description:"Monitor sitemap availability and discoverability.",category:"SEO"},
-  {id:"robots",name:"Robots.txt Checker",description:"Inspect robots directives and identify accidental blocking.",category:"SEO"},
-  {id:"alt",name:"Image Alt Text",description:"Find missing or weak image alternative text.",category:"SEO"},
-  {id:"links",name:"Internal Link Assistant",description:"Find orphaned content and useful internal-link opportunities.",category:"SEO"},
-  {id:"speed",name:"Core Web Vitals Monitor",description:"Monitor real-world performance signals when a supported analytics source is connected.",category:"Performance",pro:true},
-  {id:"searchconsole",name:"Google Search Console",description:"Connect Search Console data for indexing and search performance insights.",category:"Integration",pro:true},
-  {id:"analytics-google",name:"Google Analytics",description:"Connect analytics signals to the WyBlog dashboard.",category:"Integration"},
-  {id:"pagespeed",name:"PageSpeed Insights",description:"Run performance checks on public pages through a server-side integration.",category:"Performance"},
-  {id:"redirects",name:"Redirect & URL Audit",description:"Find changed URLs and broken destinations.",category:"SEO",pro:true}
+function PluginsView({plan,onNotice,onUpgrade}:{plan:"free"|"pro";onNotice:(s:string)=>void;onUpgrade:()=>void}) {
+ const extras: Plugin[] = [
+  {id:"schema",name:"Schema & Structured Data",description:"Validate article structure and generate supported schema recommendations.",category:"SEO",snippet:"<!-- WyBlog Schema helper runs from the WyBlog diagnosis panel. -->",instructions:["Open WyBlog → Plugins → Schema & Structured Data.","Run a diagnosis and review the schema recommendations.","Apply approved JSON-LD changes in Blogger Theme → Edit HTML."]},
+  {id:"meta",name:"Meta Title & Description",description:"SEO title/description length and quality checks.",category:"SEO",snippet:"<!-- Use Blogger post title/description fields; no secret code is required. -->",instructions:["Open a post in WyBlog.","Set the SEO title and meta description in the editor.","Publish and verify the page source."]},
+  {id:"canonical",name:"Canonical URL",description:"Check canonical consistency and duplicate URL signals.",category:"SEO",snippet:"<!-- Canonical auditing is performed by WyBlog's server-side scan. -->",instructions:["Connect Blogger.","Run the URL/SEO audit.","Fix canonical issues in Blogger's theme or post settings."]},
+  {id:"og",name:"Open Graph & Social Cards",description:"Check share titles, descriptions and image metadata.",category:"SEO",snippet:"<!-- Open Graph validation is performed by the WyBlog audit. -->",instructions:["Run a connected-site diagnosis.","Review missing Open Graph fields.","Add the recommended tags in Blogger Theme → Edit HTML."]},
+  {id:"sitemap",name:"XML Sitemap Monitor",description:"Monitor sitemap availability and discoverability.",category:"SEO",snippet:"<!-- WyBlog checks the public sitemap URL; no theme snippet is required. -->",instructions:["Connect Blogger.","Open the sitemap monitor.","Confirm the public sitemap returns successfully."]},
+  {id:"robots",name:"Robots.txt Checker",description:"Inspect robots directives and identify accidental blocking.",category:"SEO",snippet:"<!-- WyBlog checks your public robots.txt file. -->",instructions:["Connect Blogger.","Run the robots check.","Remove accidental Disallow rules in Blogger settings if found."]},
+  {id:"alt",name:"Image Alt Text",description:"Find missing or weak image alternative text.",category:"SEO",snippet:"<!-- Alt-text auditing is performed from Blogger post HTML. -->",instructions:["Run a diagnosis.","Open the affected post.","Add descriptive alt text to each meaningful image."]},
+  {id:"links",name:"Internal Link Assistant",description:"Find orphaned content and useful internal-link opportunities.",category:"SEO",snippet:"<!-- Internal-link opportunities are calculated from connected Blogger content. -->",instructions:["Connect Blogger and scan posts.","Review suggested internal links.","Add relevant links in the WyBlog editor and republish."]},
+  {id:"speed",name:"Core Web Vitals Monitor",description:"Monitor real-world performance signals when a supported analytics source is connected.",category:"Performance",pro:true,snippet:"<!-- Server-side PageSpeed/field data integration; no secret keys here. -->",instructions:["Activate Pro.","Configure the supported performance source on the server.","Run a measurement for your public blog URL."]},
+  {id:"searchconsole",name:"Google Search Console",description:"Connect Search Console data for indexing and search performance insights.",category:"Integration",pro:true,snippet:"<!-- Search Console uses OAuth; never paste private credentials into Blogger. -->",instructions:["Activate Pro.","Connect the Google account with property access.","Select the Blogger property and sync its data."]},
+  {id:"analytics-google",name:"Google Analytics",description:"Connect analytics signals to the WyBlog dashboard.",category:"Integration",snippet:"<!-- Use only a public measurement ID from your analytics provider. -->",instructions:["Choose your analytics property.","Add its public measurement ID through the supported integration.","Verify incoming events in the analytics dashboard."]},
+  {id:"pagespeed",name:"PageSpeed Insights",description:"Run performance checks on public pages through a server-side integration.",category:"Performance",snippet:"<!-- PageSpeed checks run server-side from WyBlog. -->",instructions:["Connect your Blogger site.","Enter/select a public page URL.","Run the check and apply the reported optimizations."]},
+  {id:"redirects",name:"Redirect & URL Audit",description:"Find changed URLs and broken destinations.",category:"SEO",pro:true,snippet:"<!-- URL auditing runs server-side; no Blogger theme snippet is required. -->",instructions:["Activate Pro.","Connect Blogger and run the audit.","Fix broken destinations or redirects, then rerun the audit."]}
  ];
- const [filter,setFilter]=useState("All");
+ const catalog = [...plugins, ...extras];
+ const [filter,setFilter]=useState("All"); const [selected,setSelected]=useState<Plugin|null>(null);
  const categories=useMemo(()=>["All",...Array.from(new Set(catalog.map(p=>p.category)))],[catalog]);
  const visible=filter==="All"?catalog:catalog.filter(p=>p.category===filter);
- return <div><section className="section-heading"><div><p className="eyebrow">PLUGIN MARKET</p><h1>SEO, growth & integrations.</h1></div></section><div className="chips">{categories.map(c=><button key={c} className={filter===c?"chip active":"chip"} onClick={()=>setFilter(c)}>{c}</button>)}</div><div className="plugin-list">{visible.map(p=><PluginCard key={p.id} plugin={p} onAction={()=>onNotice(p.pro?`${p.name} is a Pro plugin.`:`${p.name} requires its server/API integration before it can be enabled.`)}/>)}</div></div>;
+ return <div><section className="section-heading"><div><p className="eyebrow">PLUGIN MARKET</p><h1>SEO, growth & integrations.</h1><p className="section-sub">Every plugin includes an integration guide. Pro plugins unlock together after verified Pro payment.</p></div></section><div className="chips">{categories.map(c=><button key={c} className={filter===c?"chip active":"chip"} onClick={()=>setFilter(c)}>{c}</button>)}</div><div className="plugin-list">{visible.map(p=><PluginCard key={p.id} plugin={p} onAction={()=>setSelected(p)}/>)}</div>{selected&&<PluginDetails plugin={selected} plan={plan} close={()=>setSelected(null)} onNotice={onNotice} onUpgrade={onUpgrade}/>}</div>;
 }
 
-function PluginCard({plugin,onAction}:{plugin:Plugin;onAction:()=>void}){return <article className="plugin-card"><div className="plugin-icon"><Zap size={18}/></div><div><div className="plugin-title">{plugin.name}{plugin.pro&&<span className="pro-tag">PRO</span>}</div><p>{plugin.description}</p></div><button onClick={onAction}>{plugin.installed?"Installed":"View"}</button></article>}
+function PluginCard({plugin,onAction}:{plugin:Plugin;onAction:()=>void}){return <article className="plugin-card"><div className="plugin-icon"><Zap size={18}/></div><div><div className="plugin-title">{plugin.name}{plugin.pro&&<span className="pro-tag">PRO</span>}</div><p>{plugin.description}</p></div><button onClick={onAction}>{plugin.installed?"Installed":"Instructions"}</button></article>}
+
+function PluginDetails({plugin,plan,close,onNotice,onUpgrade}:{plugin:Plugin;plan:"free"|"pro";close:()=>void;onNotice:(s:string)=>void;onUpgrade:()=>void}){const locked=Boolean(plugin.pro&&plan!=="pro");const copy=()=>{if(locked){onUpgrade();return;}void navigator.clipboard?.writeText(plugin.snippet).then(()=>onNotice("Plugin code copied."),()=>onNotice("Clipboard access was blocked."))};return <div className="confirm-backdrop"><div className="confirm-card plugin-detail"><div className="plugin-detail-head"><div><h3>{plugin.name}{plugin.pro&&<span className="pro-tag">PRO</span>}</h3><p>{plugin.description}</p></div><button className="icon-btn" onClick={close}><X/></button></div>{plugin.pro&&<div className="plugin-pro-note">{locked?"Pro required · $1/month or ₦1,000/month · all Pro plugins unlock together.":"Pro active · this plugin is unlocked."}</div>}<h4>How to integrate</h4><ol>{plugin.instructions.map((x,i)=><li key={i}>{x}</li>)}</ol><h4>Copyable code / integration note</h4><pre className="plugin-code"><code>{locked?"Upgrade to Pro to reveal the integration code.":plugin.snippet}</code></pre><div className="plugin-detail-actions"><button className="secondary" onClick={close}>Close</button><button className="primary" onClick={copy}>{locked?"Unlock with Pro":<><Copy size={16}/> Copy code</>}</button></div></div></div>}
 
 function DiagnosisView({diagnosis,remaining,onRun,onUpgrade,onNotice}:{diagnosis:typeof demoDiagnosis;remaining:number;onRun:()=>void;onUpgrade:()=>void;onNotice:(s:string)=>void}) {
- return <div><section className="section-heading"><div><p className="eyebrow">AI SITE DIAGNOSIS</p><h1>Find what needs fixing.</h1><p className="section-sub">The scan covers the whole connected Blogger site. AI receives compact findings instead of the entire blog.</p></div></section><div className="diagnosis-top"><div className="big-score"><span>SEO SCORE</span><strong>{diagnosis.seoScore}<small>/100</small></strong></div><Metric label="Broken links" value={diagnosis.brokenLinks}/><Metric label="SEO issues" value={diagnosis.seoIssues}/><Metric label="Pages checked" value={diagnosis.pagesChecked}/><Metric label="Posts checked" value={diagnosis.postsChecked}/></div><div className="diagnosis-actions"><button className="primary" onClick={onRun}>Run new diagnosis</button><span>{remaining} new AI diagnosis{remaining===1?"":"es"} remaining this month</span></div><div className="finding-grid"><Finding title="Critical" icon="!" items={diagnosis.critical}/><Finding title="SEO" icon="S" items={diagnosis.seo}/><Finding title="Good" icon="✓" items={diagnosis.good}/></div><div className="affected"><div><p className="eyebrow">AFFECTED CONTENT</p><h2>Pages and posts</h2></div><div className="affected-row"><span className="affected-type">READY</span><strong>Real affected links appear after the Blogger site scan is connected.</strong></div></div><div className="pro-banner"><div><Sparkles/><div><strong>Need more diagnoses?</strong><span>Pro includes 10 new AI diagnoses each month.</span></div></div><button className="primary small" onClick={onUpgrade}>Get Pro · $3.99 / ₦4,500</button></div></div>;
+ return <div><section className="section-heading"><div><p className="eyebrow">AI SITE DIAGNOSIS</p><h1>Find what needs fixing.</h1><p className="section-sub">The scan covers the whole connected Blogger site. AI receives compact findings instead of the entire blog.</p></div></section><div className="diagnosis-top"><div className="big-score"><span>SEO SCORE</span><strong>{diagnosis.seoScore}<small>/100</small></strong></div><Metric label="Broken links" value={diagnosis.brokenLinks}/><Metric label="SEO issues" value={diagnosis.seoIssues}/><Metric label="Pages checked" value={diagnosis.pagesChecked}/><Metric label="Posts checked" value={diagnosis.postsChecked}/></div><div className="diagnosis-actions"><button className="primary" onClick={onRun}>Run new diagnosis</button><span>{remaining} new AI diagnosis{remaining===1?"":"es"} remaining this month</span></div><div className="finding-grid"><Finding title="Critical" icon="!" items={diagnosis.critical}/><Finding title="SEO" icon="S" items={diagnosis.seo}/><Finding title="Good" icon="✓" items={diagnosis.good}/></div><div className="affected"><div><p className="eyebrow">AFFECTED CONTENT</p><h2>Pages and posts</h2></div><div className="affected-row"><span className="affected-type">READY</span><strong>Real affected links appear after the Blogger site scan is connected.</strong></div></div><div className="pro-banner"><div><Sparkles/><div><strong>Need more diagnoses?</strong><span>Pro includes 10 new AI diagnoses each month.</span></div></div><button className="primary small" onClick={onUpgrade}>Get Pro · $1 / ₦1,000</button></div></div>;
 }
 function Metric({label,value}:{label:string;value:number}){return <div className="metric"><span>{label}</span><strong>{value}</strong></div>}
 function Finding({title,icon,items}:{title:string;icon:string;items:string[]}){return <div className="finding"><div className="finding-head"><b>{icon}</b><h3>{title}</h3></div>{items.map(x=><p key={x}>{x}</p>)}</div>}
@@ -341,6 +352,8 @@ function EditorPage({onClose,onNotice,blogConnected}:{onClose:()=>void;onNotice:
    {linkDialog&&<LinkDialog url={linkUrl} title={linkTitle} setUrl={setLinkUrl} setTitle={setLinkTitle} cancel={()=>setLinkDialog(false)} apply={applyLink}/>}
  </div>
 }
+
+function ProCheckout({email,setEmail,close,onSubmit}:{email:string;setEmail:(v:string)=>void;close:()=>void;onSubmit:(currency:"USD"|"NGN")=>void}){return <div className="confirm-backdrop"><div className="confirm-card"><div className="plugin-detail-head"><div><h3>Unlock WyBlog Pro</h3><p>All Pro plugins unlock together.</p></div><button className="icon-btn" onClick={close}><X/></button></div><label>Billing email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email"/></label><div className="pro-price-grid"><button className="secondary" onClick={()=>onSubmit("USD")}>Pay $1/month</button><button className="primary" onClick={()=>onSubmit("NGN")}>Pay ₦1,000/month</button></div><small>Payment is verified server-side before Pro is activated.</small></div></div>}
 
 function ToolbarButton({icon,label,onClick}:{icon:ReactNode;label:string;onClick:()=>void}){return <button className="toolbar-btn" title={label} aria-label={label} onClick={onClick}>{icon}</button>}
 function Collapsible({title,open,onToggle,children}:{title:string;open:boolean;onToggle:()=>void;children:ReactNode}){return <div className="side-card"><button className="side-title" onClick={onToggle}><b>{title}</b>{open?<ChevronDown/>:<ChevronRight/>}</button>{open&&<div className="side-body">{children}</div>}</div>}
