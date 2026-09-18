@@ -3,6 +3,23 @@
   "buildCommand": "tsc -b && vite build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/seo-suggestions",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/renew",
+      "schedule": "0 2 * * *"
+    }
   ]
 }

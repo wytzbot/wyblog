@@ -1,90 +1,16 @@
-/**
- * Server API client. These functions only report success when the server
- * actually confirms the requested operation.
- */
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = typeof data?.error === "string" ? data.error : `Request failed (${response.status})`;
-    throw new Error(message);
-  }
-  return data as T;
-}
-
-export function connectBlogger(): void {
-  window.location.assign("/api/auth/google");
-}
-
-async function authHeaders(): Promise<Record<string,string>> {
-  try {
-    const { getAuth } = await import("firebase/auth");
-    const { firebaseApp } = await import("./firebase");
-    let user = getAuth(firebaseApp).currentUser;
-    if (!user) { const { getWyBlogUser } = await import("./cloud"); user = await getWyBlogUser(); }
-    if (!user) return {};
-    const token = await user.getIdToken();
-    return { Authorization: `Bearer ${token}` };
-  } catch { return {}; }
-}
-
-export async function getConnectionStatus(): Promise<{ connected: boolean }> {
-  return request("/api/auth/status");
-}
-
-export async function getBillingStatus(): Promise<{ plan: "free" | "pro"; status: string; activeUntil: string | null }> {
-  return request("/api/billing/status", { headers: await authHeaders() });
-}
-
-export async function verifyProPayment(transactionId: string): Promise<{ plan: "pro" }> {
-  return request("/api/billing/verify", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeaders()) }, body: JSON.stringify({ transactionId }) });
-}
-
-export async function getBlogPosts(): Promise<{ posts: unknown[] }> {
-  return request("/api/posts");
-}
-
-export async function saveBloggerPost(payload: {
-  id?: string;
-  title: string;
-  content: string;
-  labels: string[];
-  published?: boolean;
-}): Promise<{ post?: unknown; url?: string }> {
-  return request("/api/posts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function runDiagnosis(): Promise<{ diagnosis?: unknown }> {
-  return request("/api/diagnosis", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-export async function startProCheckout(currency: "USD" | "NGN", email: string): Promise<void> {
-  const data = await request<{ checkoutUrl?: string }>("/api/billing/create", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ currency, email }),
-  });
-  if (!data.checkoutUrl) throw new Error("No checkout URL returned");
-  window.location.assign(data.checkoutUrl);
-}
-
-export async function saveBackupToDrive(payload: Record<string, unknown>): Promise<{ url?: string }> {
-  return request("/api/drive/backup", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function uploadMediaToDrive(file: File): Promise<{ url?: string }> {
-  const form = new FormData();
-  form.append("file", file);
-  return request("/api/drive/media", { method: "POST", body: form });
-}
+async function request<T>(url:string,init?:RequestInit):Promise<T>{const r=await fetch(url,init);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(typeof d?.error==="string"?d.error:`Request failed (${r.status})`);return d as T;}
+async function authHeaders():Promise<Record<string,string>>{try{const{getAuth}=await import("firebase/auth"),{firebaseApp}=await import("./firebase");let u=getAuth(firebaseApp).currentUser;if(!u){const{getWyBlogUser}=await import("./cloud");u=await getWyBlogUser();}return u?{Authorization:`Bearer ${await u.getIdToken()}`}:{};}catch{return {};}}
+export async function connectBlogger(){const d=await request<{authorizationUrl:string}>("/api/auth/google",{method:"POST",headers:await authHeaders()});if(!d.authorizationUrl)throw new Error("Google authorization URL was not returned.");window.location.assign(d.authorizationUrl);}
+export async function getConnectionStatus():Promise<{connected:boolean;blogId?:string;blogName?:string;blogUrl?:string;accountEmail?:string;accountName?:string}>{return request("/api/auth/status",{headers:await authHeaders()});}
+export async function getBillingStatus():Promise<{plan:"free"|"pro";status:string;activeUntil:string|null}>{return request("/api/billing/status",{headers:await authHeaders()});}
+export async function getBillingConfig():Promise<{usd:number;ngn:number;environment:string;encryptionKey:string}>{return request("/api/billing/config");}
+export async function startProCheckout(payload:{currency:"USD"|"NGN";name:string;email:string;payment_method:{type:"card";card:{nonce:string;encrypted_card_number:string;encrypted_expiry_month:string;encrypted_expiry_year:string;encrypted_cvv:string}}}){return request<{reference:string;chargeId:string;status:string;nextAction?:any;authorization?:any}>("/api/billing/create",{method:"POST",headers:{"Content-Type":"application/json",...(await authHeaders())},body:JSON.stringify(payload)});}
+export async function verifyProPayment(reference:string){return request<{plan:"free"|"pro";status:string;activeUntil?:string;nextAction?:any}>("/api/billing/verify",{method:"POST",headers:{"Content-Type":"application/json",...(await authHeaders())},body:JSON.stringify({reference})});}
+export async function authorizeProPayment(reference:string,chargeId:string,authorization:any){return request("/api/billing/authorize",{method:"POST",headers:{"Content-Type":"application/json",...(await authHeaders())},body:JSON.stringify({reference,chargeId,authorization})});}
+export async function getBlogPosts():Promise<{posts:any[]}>{return request("/api/posts",{headers:await authHeaders()});}
+export async function saveBloggerPost(payload:{id?:string;title:string;content:string;labels:string[];published?:boolean}):Promise<{post?:any;url?:string}>{return request("/api/posts",{method:"POST",headers:{"Content-Type":"application/json",...(await authHeaders())},body:JSON.stringify(payload)});}
+export async function runDiagnosis():Promise<{diagnosis?:any;cached?:boolean;model?:string}>{return request("/api/diagnosis",{method:"POST",headers:{"Content-Type":"application/json",...(await authHeaders())}});}
+export async function generateSEOSuggestions(){return request<{generated?:boolean;count?:number;model?:string}>("/api/seo/suggestions",{method:"POST",headers:{"Content-Type":"application/json",...(await authHeaders())}});}
+export async function registerPushToken(token:string){return request("/api/push",{method:"POST",headers:{"Content-Type":"application/json",...(await authHeaders())},body:JSON.stringify({token})});}
+export async function saveBackupToDrive(){throw new Error("Google Drive backup is not configured in this WyBlog build; no backup was claimed.");}
+export async function uploadMediaToDrive(){throw new Error("Google Drive media upload is not configured in this WyBlog build; no upload was claimed.");}

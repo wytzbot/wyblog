@@ -1,5 +1,5 @@
 import { getAuth, signInAnonymously, type User } from "firebase/auth";
-import { doc, getDoc, getFirestore, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, getFirestore, limit, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
 import { firebaseApp } from "./firebase";
 
 const auth = getAuth(firebaseApp);
@@ -48,7 +48,30 @@ export async function saveAppSettings(settings: Record<string, unknown>) {
 export async function saveFcmToken(token: string) {
   if (!token) throw new Error("Missing FCM token");
   const user = await getWyBlogUser();
-  await setDoc(doc(db, "users", user.uid, "pushTokens", token), {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const tokenId = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+  await setDoc(doc(db, "users", user.uid, "pushTokens", tokenId), {
     token, platform: "web", updatedAt: serverTimestamp()
   }, { merge: true });
+}
+
+
+export async function loadNotifications(limitCount = 30) {
+  const user = await getWyBlogUser();
+  const q = query(collection(db, "users", user.uid, "notifications"), orderBy("createdAt", "desc"), limit(limitCount));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) })) as import("./types").NotificationItem[];
+}
+
+export async function loadSEOSuggestions() {
+  const user = await getWyBlogUser();
+  const q = query(collection(db, "users", user.uid, "seoSuggestions"), orderBy("createdAt", "desc"), limit(15));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) })) as import("./types").SEOSuggestion[];
+}
+
+export async function markNotificationRead(id: string) {
+  if (!id) return;
+  const user = await getWyBlogUser();
+  await setDoc(doc(db, "users", user.uid, "notifications", id), { read: true, readAt: serverTimestamp() }, { merge: true });
 }
