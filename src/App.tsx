@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { plugins } from "./data";
 import type { Plugin } from "./types";
-import { authorizeProPayment, connectBlogger, generateSEOSuggestions, getBillingConfig, getBlogPosts, getConnectionStatus, getBillingStatus, runDiagnosis, saveBloggerPost, uploadMediaToDrive, verifyProPayment } from "./api";
+import { authorizeProPayment, connectBlogger, generateSEOSuggestions, getBillingConfig, getBlogPosts, getConnectionStatus, getBillingStatus, runDiagnosis, saveBloggerPost, startProCheckout, uploadMediaToDrive, verifyProPayment } from "./api";
 import { enableWyBlogNotifications } from "./firebase";
 import { clearDraftCloud, loadDraftCloud, loadNotifications, loadSEOSuggestions, saveDraftCloud, markNotificationRead } from "./cloud";
 
