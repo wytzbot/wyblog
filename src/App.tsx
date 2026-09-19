@@ -107,7 +107,7 @@ function App() {
     if (connecting) return;
     setConnecting(true);
     try { await connectBlogger(); }
-    catch { setConnecting(false); showNotice("Google Blogger connection is not configured yet."); }
+    catch (e) { setConnecting(false); showNotice(e instanceof Error ? e.message : "Could not start Google Blogger connection."); }
   };
 
   const handleDiagnosis = async () => {
