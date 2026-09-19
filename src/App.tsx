@@ -8,11 +8,11 @@ import {
 } from "lucide-react";
 import { plugins } from "./data";
 import type { Plugin } from "./types";
-import { authorizeProPayment, connectBlogger, generateSEOSuggestions, getBillingConfig, getBlogPosts, getConnectionStatus, getBillingStatus, runDiagnosis, saveBloggerPost, startProCheckout, verifyProPayment } from "./api";
+import { authorizeProPayment, connectBlogger, deleteBloggerPage, generateSEOSuggestions, getBillingConfig, getBlogPages, getBlogPosts, getConnectionStatus, getBillingStatus, runDiagnosis, saveBloggerPage, saveBloggerPost, startProCheckout, verifyProPayment } from "./api";
 import { enableWyBlogNotifications } from "./firebase";
 import { clearDraftCloud, loadDraftCloud, loadNotifications, loadSEOSuggestions, saveDraftCloud, markNotificationRead } from "./cloud";
 
-type Tab = "home" | "posts" | "plugins" | "diagnosis" | "notifications";
+type Tab = "home" | "posts" | "pages" | "plugins" | "diagnosis" | "notifications";
 type EditorMode = "visual" | "html";
 
 const initialHtml = "";
@@ -52,7 +52,7 @@ function App() {
     let active = true;
     const params = new URLSearchParams(window.location.search);
     const requestedTab = params.get("tab") as Tab | null;
-    if (requestedTab && ["home","posts","plugins","diagnosis","notifications"].includes(requestedTab)) setTab(requestedTab);
+    if (requestedTab && ["home","posts","pages","plugins","diagnosis","notifications"].includes(requestedTab)) setTab(requestedTab);
     if (params.get("blogger") === "connected") {
       window.history.replaceState({}, "", window.location.pathname);
       if (active) showNotice("Blogger connected successfully.");
@@ -138,7 +138,7 @@ function App() {
           <div><strong>WyBlog</strong><span>Blogger, simplified.</span></div>
         </div>
         <div className="top-actions"><span className={`connection-pill ${online ? "online" : "offline"}`} title={online ? "Internet connection available" : "Offline mode — remote actions may fail"}>{online ? <Wifi size={14}/> : <WifiOff size={14}/>}<span>{online ? "Online" : "Offline"}</span></span>
-          <button className="icon-btn" aria-label="Search posts" onClick={() => { setTab("posts"); showNotice("Use Refresh to load Blogger posts, then search within the loaded list."); }}><Search size={19}/></button>
+          <button className="icon-btn" aria-label="Search posts" onClick={() => { setTab("posts"); }}><Search size={19}/></button>
           <button className="icon-btn" aria-label="Open menu" onClick={() => setMenuOpen(true)}><Menu size={20}/></button>
         </div>
       </header>
@@ -166,7 +166,8 @@ function App() {
         </section>
 
         {tab === "home" && <Home onEdit={() => setEditorOpen(true)} diagnosis={diagnosis} postStats={postStats} plan={plan} onDiagnosis={() => setTab("diagnosis")} plugins={plugins} onNotice={showNotice}/>}
-        {tab === "posts" && <PostsView onEdit={() => setEditorOpen(true)} onNotice={showNotice} onLoadPosts={getBlogPosts}/>}
+        {tab === "posts" && <PostsView onEdit={() => setEditorOpen(true)} onNotice={showNotice} onLoadPosts={getBlogPosts} hasBlog={hasBlog}/>}
+        {tab === "pages" && <PagesView onNotice={showNotice} hasBlog={hasBlog}/>}
         {tab === "plugins" && <PluginsView plan={plan} onNotice={showNotice} onUpgrade={()=>setCheckoutOpen(true)}/>}
         {tab === "diagnosis" && <DiagnosisView diagnosis={diagnosis} busy={diagnosisBusy} onRun={handleDiagnosis} onUpgrade={()=>setCheckoutOpen(true)} onNotice={showNotice}/>}
         {tab === "notifications" && <NotificationsView plan={plan} notifications={notifications} suggestions={suggestions} onRefresh={async()=>{setNotifications(await loadNotifications().catch(()=>[]));setSuggestions(await loadSEOSuggestions().catch(()=>[]));}} onGenerate={async()=>{try{await generateSEOSuggestions();setSuggestions(await loadSEOSuggestions());setNotifications(await loadNotifications());showNotice("SEO suggestions refreshed.");}catch(e){showNotice(e instanceof Error?e.message:"Could not generate suggestions.");}}} onRead={async id=>{await markNotificationRead(id);setNotifications(v=>v.map(n=>n.id===id?{...n,read:true}:n));}} onUpgrade={()=>setCheckoutOpen(true)} onNotice={showNotice}/> }
@@ -175,6 +176,7 @@ function App() {
       <nav className="bottom-nav">
         <NavButton active={tab==="home"} icon={<Grid2X2/>} label="Home" onClick={()=>setTab("home")}/>
         <NavButton active={tab==="posts"} icon={<FileText/>} label="Posts" onClick={()=>setTab("posts")}/>
+        <NavButton active={tab==="pages"} icon={<FileText/>} label="Pages" onClick={()=>setTab("pages")}/>
         <NavButton active={tab==="plugins"} icon={<Zap/>} label="Plugins" onClick={()=>setTab("plugins")}/>
         <NavButton active={tab==="notifications"} icon={<Bell/>} label="Alerts" onClick={()=>setTab("notifications")}/>
         <NavButton active={tab==="diagnosis"} icon={<Bot/>} label="Diagnosis" onClick={()=>setTab("diagnosis")}/>
@@ -211,15 +213,145 @@ function Home({onEdit,diagnosis,postStats,plan,onDiagnosis,plugins,onNotice}:{on
 function Stat({label,value}:{label:string;value:string|number}){return <div className="stat-card"><span>{label}</span><strong>{value}</strong></div>}
 function NavButton({active,icon,label,onClick}:{active:boolean;icon:ReactNode;label:string;onClick:()=>void}){return <button className={`nav-item ${active?"active":""}`} onClick={onClick}>{icon}<span>{label}</span></button>}
 
-function PostsView({onEdit,onNotice,onLoadPosts}:{onEdit:()=>void;onNotice:(s:string)=>void;onLoadPosts:()=>Promise<{posts:unknown[]}>}) {
+function PostsView({onEdit,onNotice,onLoadPosts,hasBlog}:{onEdit:()=>void;onNotice:(s:string)=>void;onLoadPosts:()=>Promise<{posts:unknown[]}>;hasBlog:boolean}) {
  const [posts,setPosts]=useState<unknown[]>([]);
  const [query,setQuery]=useState("");
  const [loading,setLoading]=useState(false);
  const [loaded,setLoaded]=useState(false);
- const load=async()=>{setLoading(true);try{const result=await onLoadPosts();setPosts(result.posts||[]);setLoaded(true);if(!result.posts?.length)onNotice("Blogger returned no posts for this blog.");}catch(error){onNotice(error instanceof Error?error.message:"Could not load Blogger posts.");}finally{setLoading(false);}};
+ const load=async(silent=false)=>{if(!hasBlog)return;setLoading(true);try{const result=await onLoadPosts();setPosts(result.posts||[]);setLoaded(true);if(!silent)onNotice(result.posts?.length?`Loaded ${result.posts.length} Blogger posts.`:"Blogger returned no posts for this blog.");}catch(error){if(!silent)onNotice(error instanceof Error?error.message:"Could not load Blogger posts.");}finally{setLoading(false);}};
+ useEffect(()=>{void load(true);const onVisible=()=>{if(document.visibilityState==="visible")void load(true)};document.addEventListener("visibilitychange",onVisible);return()=>document.removeEventListener("visibilitychange",onVisible);},[hasBlog]);
  const filtered=posts.filter(post=>{const p=post as {title?:string;content?:string}; const q=query.trim().toLowerCase(); return !q||`${p.title||""} ${p.content||""}`.toLowerCase().includes(q);});
- return <div><section className="section-heading"><div><p className="eyebrow">CONTENT</p><h1>Your posts</h1></div><div className="editor-head-actions"><button className="secondary small" onClick={()=>void load()} disabled={loading}>{loading?"Loading…":"Refresh"}</button><button className="primary small" onClick={onEdit}>New article</button></div></section>{!loaded?<div className="empty-state"><strong>Load your Blogger posts.</strong><p>Press Refresh to fetch live posts from the connected blog.</p></div>:<div className="post-list">{filtered.map((post,index)=>{const item=post as {id?:string;title?:string;published?:string;url?:string};return <button className="post-row" key={item.id||index} onClick={()=>item.url?window.open(item.url,"_blank","noopener,noreferrer"):onNotice("This Blogger post has no public URL.")}><div className="post-number">{index+1}</div><div><strong>{item.title||"Untitled post"}</strong><span>{item.published?new Date(item.published).toLocaleDateString():"Blogger post"}</span></div><ChevronRight/></button>})}</div>}{loaded&&posts.length>0&&filtered.length===0&&<div className="empty-state"><strong>No matching posts.</strong><p>Try another search term.</p></div>}</div>;
+ if(!hasBlog)return <div><section className="section-heading"><div><p className="eyebrow">CONTENT</p><h1>Your posts</h1><p className="section-sub">Connect a Blogger site first. Once connected, posts load automatically when this screen opens.</p></div></section><div className="empty-state"><strong>No Blogger site connected.</strong><p>Connect Blogger above, then return here. You won't need to manually refresh just to load posts.</p></div></div>;
+ return <div><section className="section-heading"><div><p className="eyebrow">CONTENT</p><h1>Your posts</h1><p className="section-sub">Live Blogger posts load automatically. Refresh only when you want to force a fresh sync.</p></div><div className="editor-head-actions"><button className="secondary small" onClick={()=>void load(false)} disabled={loading}><RotateCcw size={14}/>{loading?"Syncing…":"Refresh"}</button><button className="primary small" onClick={onEdit}>New article</button></div></section><div className="post-search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search loaded posts…" aria-label="Search loaded posts"/></div>{loading&&!loaded?<div className="empty-state"><strong>Loading Blogger posts…</strong><p>Fetching the latest posts from your connected blog.</p></div>:!loaded?<div className="empty-state"><strong>Waiting for Blogger posts…</strong><p>The first sync starts automatically.</p></div>:<div className="post-list">{filtered.map((post,index)=>{const item=post as {id?:string;title?:string;published?:string;url?:string};return <button className="post-row" key={item.id||index} onClick={()=>item.url?window.open(item.url,"_blank","noopener,noreferrer"):onNotice("This Blogger post has no public URL.")}><div className="post-number">{index+1}</div><div><strong>{item.title||"Untitled post"}</strong><span>{item.published?new Date(item.published).toLocaleDateString():"Blogger post"}</span></div><ChevronRight/></button>})}</div>}{loaded&&posts.length===0&&<div className="empty-state"><strong>No posts found.</strong><p>This Blogger blog currently has no posts.</p></div>}{loaded&&posts.length>0&&filtered.length===0&&<div className="empty-state"><strong>No matching posts.</strong><p>Try another search term.</p></div>}</div>;
 }
+
+const PAGE_TEMPLATES:{name:string;title:string;content:string}[]=[
+ {name:"About",title:"About",content:"<h2>About this blog</h2><p>Tell your readers who you are, what this blog is about, and what they can expect here.</p>"},
+ {name:"Privacy Policy",title:"Privacy Policy",content:"<h2>Privacy Policy</h2><p>Explain what information your blog collects, how it is used, cookies or analytics you use, and how readers can contact you about privacy.</p><p><strong>Important:</strong> Customize this page for your actual services, tools, analytics, advertising and legal requirements before publishing.</p>"},
+ {name:"Contact",title:"Contact",content:"<h2>Contact</h2><p>Tell readers how they can contact you. Add your preferred email address or other public contact method here.</p>"},
+];
+
+function PagesView({onNotice,hasBlog}:{onNotice:(s:string)=>void;hasBlog:boolean}){
+ const [pages,setPages]=useState<any[]>([]);const [loading,setLoading]=useState(false);const [saving,setSaving]=useState(false);const [editing,setEditing]=useState<any|null>(null);const [deleteId,setDeleteId]=useState<string|null>(null);const [query,setQuery]=useState("");const [showTemplates,setShowTemplates]=useState(false);
+ const load=async(silent=false)=>{if(!hasBlog)return;setLoading(true);try{const r=await getBlogPages();setPages(r.pages||[]);if(!silent)onNotice(`Loaded ${r.pages?.length||0} Blogger pages.`);}catch(e){if(!silent)onNotice(e instanceof Error?e.message:"Could not load Blogger pages.");}finally{setLoading(false);}};
+ useEffect(()=>{void load(true);const onVisible=()=>{if(document.visibilityState==="visible")void load(true)};document.addEventListener("visibilitychange",onVisible);return()=>document.removeEventListener("visibilitychange",onVisible);},[hasBlog]);
+ const filtered=pages.filter(p=>{const q=query.trim().toLowerCase();return !q||`${p.title||""} ${p.content||""}`.toLowerCase().includes(q);});
+ const save=async(title:string,content:string,published:boolean,id?:string)=>{setSaving(true);try{const r=await saveBloggerPage({id,title,content,published});await load(true);setEditing(null);setShowTemplates(false);onNotice(id?"Blogger page updated successfully.":published?"Blogger page published successfully.":"Blogger page saved as a draft.");if(r.url){} }catch(e){onNotice(e instanceof Error?e.message:"Could not save Blogger page.");}finally{setSaving(false);}};
+ const remove=async(id:string)=>{setLoading(true);try{await deleteBloggerPage(id);setPages(v=>v.filter(p=>String(p.id)!==String(id)));onNotice("Blogger page deleted.");}catch(e){onNotice(e instanceof Error?e.message:"Could not delete Blogger page.");}finally{setLoading(false);}};
+ if(!hasBlog)return <div><section className="section-heading"><div><p className="eyebrow">BLOGGER PAGES</p><h1>About, Privacy, Contact & more</h1><p className="section-sub">These are Blogger Pages — separate from your posts. Connect your blog to manage them here.</p></div></section><div className="empty-state"><strong>No Blogger site connected.</strong><p>Connect Blogger above, then this screen will load the pages that already exist on your blog.</p></div></div>;
+ return <div><section className="section-heading"><div><p className="eyebrow">BLOGGER PAGES</p><h1>Static pages</h1><p className="section-sub">Manage pages such as About, Privacy Policy, Contact, Disclaimer and Terms directly in Blogger.</p></div><div className="editor-head-actions"><button className="secondary small" onClick={()=>void load(false)} disabled={loading}><RotateCcw size={14}/>{loading?"Syncing…":"Refresh"}</button><button className="primary small" onClick={()=>setShowTemplates(true)}>New page</button></div></section><div className="post-search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search pages…" aria-label="Search pages"/></div>{loading&&!pages.length?<div className="empty-state"><strong>Loading Blogger pages…</strong><p>Fetching your site's static pages.</p></div>:filtered.length?<div className="page-list">{filtered.map((p,i)=><article className="page-row" key={p.id||i}><div className="page-row-icon"><FileText size={17}/></div><div className="page-row-copy"><strong>{p.title||"Untitled page"}</strong><span>{p.status||"LIVE"} · {p.updated?new Date(p.updated).toLocaleDateString():p.published?new Date(p.published).toLocaleDateString():"Blogger page"}</span></div><div className="page-row-actions"><button className="secondary small" onClick={()=>setEditing(p)}>Edit</button>{p.url&&<button className="icon-btn" aria-label={`Open ${p.title||"page"}`} onClick={()=>window.open(p.url,"_blank","noopener,noreferrer")}><ExternalLink size={16}/></button>}<button className="icon-btn danger-icon" aria-label={`Delete ${p.title||"page"}`} onClick={()=>setDeleteId(String(p.id))}><Trash2 size={16}/></button></div></article>)}</div>:<div className="empty-state"><strong>No Blogger pages yet.</strong><p>Create an About, Privacy Policy, Contact or custom page. Pages are stored in your Blogger blog, not only on this device.</p><button className="primary small" onClick={()=>setShowTemplates(true)}>Create your first page</button></div>}{(showTemplates||editing)&&<PageEditorModal page={editing} templates={PAGE_TEMPLATES} saving={saving} close={()=>{setShowTemplates(false);setEditing(null)}} onSave={save}/>} {deleteId&&<div className="confirm-backdrop" onClick={()=>setDeleteId(null)}><div className="confirm-card" onClick={e=>e.stopPropagation()}><h3>Delete this page?</h3><p>This will delete the Blogger Page from your blog. This cannot be undone from WyBlog.</p><div><button className="secondary" onClick={()=>setDeleteId(null)}>Cancel</button><button className="danger filled" onClick={async()=>{const id=deleteId;setDeleteId(null);await remove(id)}}>Delete page</button></div></div></div>}</div>;
+}
+
+function PageEditorModal({page,templates,saving,close,onSave}:{page:any|null;templates:{name:string;title:string;content:string}[];saving:boolean;close:()=>void;onSave:(title:string,content:string,published:boolean,id?:string)=>Promise<void>}){
+ const editorRef=useRef<HTMLDivElement>(null);
+ const savedSelection=useRef<Range|null>(null);
+ const [title,setTitle]=useState(page?.title||"");
+ const [content,setContent]=useState(page?.content||"");
+ const [published,setPublished]=useState(page?.status!=="DRAFT");
+ const [mode,setMode]=useState<EditorMode>("visual");
+ const [templateOpen,setTemplateOpen]=useState(!page);
+ const [preview,setPreview]=useState(false);
+ const [linkDialog,setLinkDialog]=useState(false);
+ const [linkUrl,setLinkUrl]=useState("");
+ const [linkTitle,setLinkTitle]=useState("");
+ const [mediaKind,setMediaKind]=useState<"image"|"video"|null>(null);
+ const [mediaUrl,setMediaUrl]=useState("");
+ const [wordCount,setWordCount]=useState(0);
+
+ useEffect(()=>{
+   if(editorRef.current && mode==="visual" && editorRef.current.innerHTML!==content) editorRef.current.innerHTML=content;
+ },[mode,content]);
+ useEffect(()=>{
+   if(!editorRef.current) return;
+   editorRef.current.innerHTML=content||"";
+   const plain=(editorRef.current.innerText||"").trim();
+   setWordCount(plain?plain.split(/\s+/).length:0);
+ },[]);
+ const sync=()=>{
+   if(!editorRef.current)return;
+   const next=editorRef.current.innerHTML;
+   setContent(next);
+   const plain=(editorRef.current.innerText||"").trim();
+   setWordCount(plain?plain.split(/\s+/).length:0);
+ };
+ const saveSelection=()=>{const sel=window.getSelection();if(sel&&sel.rangeCount)savedSelection.current=sel.getRangeAt(0).cloneRange()};
+ const restoreSelection=()=>{const sel=window.getSelection();if(sel&&savedSelection.current){sel.removeAllRanges();sel.addRange(savedSelection.current)}};
+ const command=(cmd:string,value?:string)=>{restoreSelection();editorRef.current?.focus();document.execCommand(cmd,false,value);sync();saveSelection()};
+ const insertHtml=(fragment:string)=>{restoreSelection();editorRef.current?.focus();document.execCommand("insertHTML",false,fragment);sync();saveSelection()};
+ const insertText=(text:string)=>{restoreSelection();editorRef.current?.focus();document.execCommand("insertText",false,text);sync();saveSelection()};
+ const openGoogle=()=>{const text=window.getSelection()?.toString().trim();window.open("https://www.google.com/search?q="+encodeURIComponent(text||title),"_blank","noopener,noreferrer")};
+ const openLinkDialog=()=>{saveSelection();setLinkUrl("");setLinkTitle("");setLinkDialog(true)};
+ const applyLink=()=>{
+   const url=linkUrl.trim();
+   if(!url){return}
+   if(!/^https?:\/\//i.test(url)){return}
+   restoreSelection();editorRef.current?.focus();document.execCommand("createLink",false,url);
+   const range=savedSelection.current;const root=editorRef.current;
+   if(linkTitle.trim()&&range&&root){
+     let node:Element|null=range.commonAncestorContainer.nodeType===Node.ELEMENT_NODE?range.commonAncestorContainer as Element:range.commonAncestorContainer.parentElement;
+     const anchor=node?.closest("a")||root.querySelector(`a[href="${CSS.escape(url)}"]`);
+     anchor?.setAttribute("title",linkTitle.trim());
+   }
+   sync();setLinkDialog(false);
+ };
+ const openMedia=(kind:"image"|"video")=>{saveSelection();setMediaKind(kind);setMediaUrl("")};
+ const applyMedia=()=>{
+   const url=mediaUrl.trim();
+   if(!/^https:\/\//i.test(url))return;
+   if(mediaKind==="image")insertHtml(`<img src="${escapeHtml(url)}" alt="" style="max-width:100%;height:auto" />`);
+   else if(mediaKind==="video")insertHtml(`<video controls style="max-width:100%"><source src="${escapeHtml(url)}"></video>`);
+   setMediaKind(null);setMediaUrl("");
+ };
+ const apply=(t:{title:string;content:string})=>{setTitle(t.title);setContent(t.content);setTemplateOpen(false);setMode("visual")};
+ const submit=(status=published)=>{if(!title.trim()||!content.replace(/<[^>]*>/g," ").trim())return;void onSave(title.trim(),content,status,page?.id?String(page.id):undefined)};
+ return <div className="page-editor-overlay">
+   <div className="editor-shell page-editor-shell">
+     <header className="editor-head">
+       <button className="icon-btn" onClick={close} aria-label="Close page editor"><X/></button>
+       <div><strong>Page Editor</strong><span>{page?"Edit Blogger Page":"Create Blogger Page"}</span></div>
+       <div className="editor-head-actions">
+         <button className="secondary small" onClick={()=>setPreview(true)}><Eye/> Preview</button>
+         <button className="secondary small" onClick={()=>{setPublished(false);submit(false)}} disabled={saving||!title.trim()||!content.trim()}><Save/> {saving?"Saving…":"Save draft"}</button>
+         <button className="primary small" onClick={()=>{setPublished(true);void onSave(title.trim(),content,true,page?.id?String(page.id):undefined)}} disabled={saving||!title.trim()||!content.trim()}><Zap/> {saving?"Publishing…":"Publish"}</button>
+       </div>
+     </header>
+     <main className="editor-main">
+       {templateOpen&&!page&&<div className="page-templates"><strong>Start from a template</strong><div>{templates.map(t=><button key={t.name} className="secondary small" onClick={()=>apply(t)}>{t.name}</button>)}<button className="secondary small" onClick={()=>setTemplateOpen(false)}>Blank page</button></div></div>}
+       <input className="title-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Page title" aria-label="Page title"/>
+       <div className="editor-grid">
+         <section>
+           <div className="floating-toolbar" onPointerDown={e=>{if((e.target as HTMLElement).closest("button"))e.preventDefault()}}>
+             <ToolbarButton icon={<Undo2/>} label="Undo" onClick={()=>command("undo")}/><ToolbarButton icon={<Redo2/>} label="Redo" onClick={()=>command("redo")}/>
+             <ToolbarButton icon={<Bold/>} label="Bold" onClick={()=>command("bold")}/><ToolbarButton icon={<Italic/>} label="Italic" onClick={()=>command("italic")}/>
+             <select aria-label="Font" onChange={e=>command("fontName",e.target.value)} defaultValue="Arial"><option value="Arial">Font</option><option value="Georgia">Georgia</option><option value="Verdana">Verdana</option><option value="Times New Roman">Times</option></select>
+             <select aria-label="Heading size" onChange={e=>command("formatBlock",e.target.value)} defaultValue="p"><option value="p">Body</option><option value="h1">H1</option><option value="h2">H2</option><option value="h3">H3</option><option value="h4">H4</option><option value="h5">H5</option><option value="h6">H6</option></select>
+             <ToolbarButton icon={<AlignLeft/>} label="Left" onClick={()=>command("justifyLeft")}/><ToolbarButton icon={<AlignCenter/>} label="Center" onClick={()=>command("justifyCenter")}/><ToolbarButton icon={<AlignRight/>} label="Right" onClick={()=>command("justifyRight")}/>
+             <ToolbarButton icon={<List/>} label="Bulleted list" onClick={()=>command("insertUnorderedList")}/><ToolbarButton icon={<ListOrdered/>} label="Numbered list" onClick={()=>command("insertOrderedList")}/><ToolbarButton icon={<Quote/>} label="Quote" onClick={()=>command("formatBlock","blockquote")}/><ToolbarButton icon={<Strikethrough/>} label="Strikethrough" onClick={()=>command("strikeThrough")}/><ToolbarButton icon={<Minus/>} label="Divider" onClick={()=>insertHtml("<hr />")}/>
+             <label className="color-tool" title="Text color"><Type/><input type="color" defaultValue="#111111" onChange={e=>command("foreColor",e.target.value)}/></label>
+             <label className="color-tool" title="Highlight"><Highlighter/><input type="color" defaultValue="#fff2a8" onChange={e=>command("hiliteColor",e.target.value)}/></label>
+             <ToolbarButton icon={<Link2/>} label="Link" onClick={openLinkDialog}/><ToolbarButton icon={<Search/>} label="Google search" onClick={openGoogle}/>
+             <ToolbarButton icon={<Copy/>} label="Copy" onClick={()=>{const text=window.getSelection()?.toString()||"";if(text&&navigator.clipboard)void navigator.clipboard.writeText(text)}}/>
+             <ToolbarButton icon={<ImagePlus/>} label="Image URL" onClick={()=>openMedia("image")}/><ToolbarButton icon={<Video/>} label="Video URL" onClick={()=>openMedia("video")}/>
+             <ToolbarButton icon={<span className="asterisk">＊</span>} label="Asterisk" onClick={()=>insertText("＊")}/><ToolbarButton icon={<RotateCcw/>} label="Clear formatting" onClick={()=>command("removeFormat")}/>
+             <ToolbarButton icon={<Code2/>} label="HTML" onClick={()=>setMode(mode==="visual"?"html":"visual")}/>
+           </div>
+           {mode==="visual"?<div ref={editorRef} className="rich-editor page-rich-editor" contentEditable suppressContentEditableWarning onInput={sync} onMouseUp={saveSelection} onKeyUp={saveSelection} onTouchEnd={saveSelection} data-placeholder="Start writing your page…"/>:<textarea className="html-editor" value={content} onChange={e=>setContent(e.target.value)} spellCheck={false} aria-label="HTML source"/>}
+           <div className="editor-foot"><span>{wordCount.toLocaleString()} words</span><span>{mode==="html"?"HTML source mode":"Visual mode"}</span></div>
+           <div className="editor-upload-row"><button className="secondary small" onClick={()=>setMode(mode==="visual"?"html":"visual")}><Code2/> {mode==="visual"?"Switch to HTML":"Switch to visual"}</button></div>
+         </section>
+         <aside className="editor-side">
+           <Collapsible title="Page publishing" open={true} onToggle={()=>{}}><label className="page-publish"><input type="checkbox" checked={published} onChange={e=>setPublished(e.target.checked)}/><span><strong>{published?"Publish page":"Save as draft"}</strong><small>{published?"The page will be live on Blogger.":"Keep the page as a Blogger draft."}</small></span></label><button className="primary small" style={{width:"100%"}} disabled={saving||!title.trim()||!content.trim()} onClick={submit}>{saving?"Saving…":published?"Publish page":"Save draft"}</button></Collapsible>
+           <Collapsible title="Blogger page" open={true} onToggle={()=>{}}><p className="side-note">This editor writes the page body as HTML to Blogger. Use the HTML switch when you need exact markup, embeds or custom page structure.</p></Collapsible>
+         </aside>
+       </div>
+     </main>
+   </div>
+   {preview&&<Preview title={title} html={content} close={()=>setPreview(false)}/>} 
+   {mediaKind&&<MediaDialog kind={mediaKind} url={mediaUrl} setUrl={setMediaUrl} cancel={()=>setMediaKind(null)} apply={applyMedia}/>} 
+   {linkDialog&&<LinkDialog url={linkUrl} title={linkTitle} setUrl={setLinkUrl} setTitle={setLinkTitle} cancel={()=>setLinkDialog(false)} apply={applyLink}/>} 
+ </div>;
+}
+function idOrUndefined(page:any){return page?.id?String(page.id):undefined}
 
 function PluginsView({plan,onNotice,onUpgrade}:{plan:"free"|"pro";onNotice:(s:string)=>void;onUpgrade:()=>void}) {
  const catalog = plugins;
@@ -268,7 +400,7 @@ function MenuDrawer({close,openBlog,openBlogger,setTab,onEdit,onNotice,onEnableN
  return <div className="menu-backdrop" onClick={close}><aside className="drawer" onClick={e=>e.stopPropagation()}><div className="drawer-head"><div><strong>WyBlog</strong><span>Control panel & Blogger tools</span></div><button className="icon-btn" onClick={close}><X/></button></div>
  <MenuGroup title="CREATE" items={[["New article",<FileText/>,()=>action(onEdit)],["Article drafts",<Save/>,()=>action(()=>onNotice("Drafts will sync through the Blogger posts API."))]]}/>
  <MenuGroup title="MY BLOG" items={[["Open blog",<ExternalLink/>,()=>action(openBlog)],["Blogger editor",<ExternalLink/>,()=>action(openBlogger)]]}/>
- <MenuGroup title="BLOGGER ACCESSIBLE" items={[["Posts",<FileText/>,()=>action(()=>setTab("posts"))]]}/>
+ <MenuGroup title="BLOGGER CONTENT" items={[["Posts",<FileText/>,()=>action(()=>setTab("posts"))],["Pages · About / Privacy / Contact",<FileText/>,()=>action(()=>setTab("pages"))]]}/>
  <MenuGroup title="THEME & LAYOUT" items={[["Open Blogger theme editor",<ExternalLink/>,()=>action(openBlogger)]]}/>
  <MenuGroup title="TOOLS" items={[
  ["Enable notifications",<Activity/>,()=>action(onEnableNotifications)],["SEO & plugins",<Zap/>,()=>action(()=>setTab("plugins"))],["AI diagnosis",<Bot/>,()=>action(()=>setTab("diagnosis"))]]}/>
