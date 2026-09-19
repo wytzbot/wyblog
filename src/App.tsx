@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { plugins } from "./data";
 import type { Plugin } from "./types";
-import { authorizeProPayment, connectBlogger, generateSEOSuggestions, getBillingConfig, getBlogPosts, getConnectionStatus, getBillingStatus, runDiagnosis, saveBloggerPost, startProCheckout, uploadMediaToDrive, verifyProPayment } from "./api";
+import { authorizeProPayment, connectBlogger, generateSEOSuggestions, getBillingConfig, getBlogPosts, getConnectionStatus, getBillingStatus, runDiagnosis, saveBloggerPost, startProCheckout, verifyProPayment } from "./api";
 import { enableWyBlogNotifications } from "./firebase";
 import { clearDraftCloud, loadDraftCloud, loadNotifications, loadSEOSuggestions, saveDraftCloud, markNotificationRead } from "./cloud";
 
@@ -327,7 +327,7 @@ useEffect(()=>{
    let active=true;
    void loadDraftCloud().then((draft)=>{
      if(!active||!draft) return;
-     if(!localStorage.getItem("wyblog:draft:html") && draft.html!==undefined) setHtml(draft.html||"");
+     if(!localStorage.getItem("wyblog:draft:html") && draft.html!==undefined){ const next=draft.html||""; setHtml(next); if(editorRef.current && mode==="visual") editorRef.current.innerHTML=next; }
      if(!localStorage.getItem("wyblog:draft:title") && draft.title!==undefined) setTitle(draft.title||"");
      if(!localStorage.getItem("wyblog:draft:seoTitle") && draft.seoTitle!==undefined) setSeoTitle(draft.seoTitle||"");
      if(!localStorage.getItem("wyblog:draft:meta") && draft.meta!==undefined) setMeta(draft.meta||"");
@@ -420,8 +420,6 @@ function Confirm({title,text,cancel,confirm,cancelLabel="Cancel",confirmLabel="C
 function MediaDialog({kind,url,setUrl,cancel,apply}:{kind:"image"|"video";url:string;setUrl:(v:string)=>void;cancel:()=>void;apply:()=>void}){return <div className="confirm-backdrop"><div className="confirm-card link-dialog"><h3>Insert {kind}</h3><p className="side-note">Use a public HTTPS {kind} URL that Blogger readers can access.</p><label>HTTPS URL<input autoFocus inputMode="url" value={url} onChange={e=>setUrl(e.target.value)} placeholder={kind==="image"?"https://example.com/image.jpg":"https://example.com/video.mp4"}/></label><div><button className="secondary" onClick={cancel}>Cancel</button><button className="primary" onClick={apply}>Insert {kind}</button></div></div></div>}
 function LinkDialog({url,title,setUrl,setTitle,cancel,apply}:{url:string;title:string;setUrl:(v:string)=>void;setTitle:(v:string)=>void;cancel:()=>void;apply:()=>void}){return <div className="confirm-backdrop"><div className="confirm-card link-dialog"><h3>Add link</h3><label>URL<input autoFocus value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://example.com"/></label><label>Link title<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Describe this link"/></label><div><button className="secondary" onClick={cancel}>Cancel</button><button className="primary" onClick={apply}>Add link</button></div></div></div>}
 function PenIcon(){return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z"/><path d="m13.5 6.5 4 4"/></svg>}
-function UploadIcon(){return <UploadArticleIcon/>}
-function UploadArticleIcon(){return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>}
 function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]!))}
 function sanitizeHtml(value:string){
  const doc=new DOMParser().parseFromString(value,"text/html");
