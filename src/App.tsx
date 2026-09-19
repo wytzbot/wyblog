@@ -22,6 +22,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [blogConnected, setBlogConnected] = useState(false);
+  const [hasBlog, setHasBlog] = useState(false);
   const [plan, setPlan] = useState<"free"|"pro">("free");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [accountEmail, setAccountEmail] = useState("");
@@ -55,6 +56,10 @@ function App() {
     if (params.get("blogger") === "connected") {
       window.history.replaceState({}, "", window.location.pathname);
       if (active) showNotice("Blogger connected successfully.");
+    } else if (params.get("blogger") === "connected-no-blog") {
+      const message = params.get("message") || "Google account connected, but no blog was found on it.";
+      window.history.replaceState({}, "", window.location.pathname);
+      if (active) showNotice(message);
     } else if (params.get("blogger") === "error") {
       const message = params.get("message") || "Blogger connection was not completed.";
       window.history.replaceState({}, "", window.location.pathname);
@@ -72,6 +77,7 @@ function App() {
       if (!active) return;
       const connected = Boolean(result.connected);
       setBlogConnected(connected);
+      setHasBlog(Boolean((result as any).hasBlog));
       setBlogName(result.blogName || null);
       setBlogUrl(result.blogUrl || null);
       setAccountEmail(result.accountEmail || "");
@@ -111,7 +117,7 @@ function App() {
   };
 
   const handleDiagnosis = async () => {
-    if (!blogConnected || diagnosisBusy) { if (!blogConnected) showNotice("Connect Blogger before running a site diagnosis."); return; }
+    if (!hasBlog || diagnosisBusy) { if (!hasBlog) showNotice(blogConnected ? "No blog found on this account yet — create one at blogger.com, then reconnect." : "Connect Blogger before running a site diagnosis."); return; }
     setDiagnosisBusy(true);
     try { const result = await runDiagnosis(); if (result.diagnosis && typeof result.diagnosis === "object") setDiagnosis(result.diagnosis as import("./types").DiagnosisSummary); showNotice(result.cached ? "Today’s diagnosis is already available." : "Today’s site diagnosis is ready."); }
     catch(error) { showNotice(error instanceof Error ? error.message : "Daily site diagnosis failed."); }
@@ -122,7 +128,7 @@ function App() {
   const openBlogger = () => window.open("https://www.blogger.com/", "_blank", "noopener,noreferrer");
 
   if (welcome) return <WelcomeOnboarding onDone={() => { localStorage.setItem("wyblog:welcome-complete", "1"); setWelcome(false); }} />;
-  if (editorOpen) return <EditorPage onClose={() => setEditorOpen(false)} onNotice={showNotice} blogConnected={blogConnected} />;
+  if (editorOpen) return <EditorPage onClose={() => setEditorOpen(false)} onNotice={showNotice} blogConnected={hasBlog} />;
 
   return (
     <div className="app-shell">
@@ -153,8 +159,8 @@ function App() {
         <section className="blog-row">
           <div>
             <span className="muted">CURRENT BLOG</span>
-            <h2>{blogConnected ? "Connected Blogger site" : "No Blogger site connected"}</h2>
-            <span className="demo-url">{blogConnected ? (blogUrl || blogName || "Connected · sync available") : "Connect Blogger to load live data"}</span>
+            <h2>{blogConnected ? (hasBlog ? "Connected Blogger site" : `Connected as ${accountEmail || "Google account"}`) : "No Blogger site connected"}</h2>
+            <span className="demo-url">{blogConnected ? (hasBlog ? (blogUrl || blogName || "Connected · sync available") : "No blog found on this account — create one at blogger.com, then reconnect") : "Connect Blogger to load live data"}</span>
           </div>
           <button className="secondary" onClick={handleConnect} disabled={connecting}><Zap size={16}/> {connecting ? "Connecting…" : blogConnected ? "Reconnect" : "Connect"}</button>
         </section>
